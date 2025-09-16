@@ -52,7 +52,7 @@ class SelfAttention(nn.Module):
 
         # We'll also add a mask to support masked attention, if we want
         # it
-        if mask:
+        if mask is not None:
             # Set masked positions to small values
             scaled_energy = scaled_energy.masked_fill(mask == 0,
                                                       float("-1e20"))

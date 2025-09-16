@@ -22,12 +22,12 @@ class Encoder(nn.Module):
         self.word_embedding = nn.Embedding(src_vocab_size, embed_size)
 
         # Pre-calculate the positional encoding matrix
-        self.positional_encoding = torch.zeros(max_length, embed_size).to(device)
+        positional_encoding = torch.zeros(max_length, embed_size).to(device)
         position = torch.arange(0, max_length, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, embed_size, 2).float() * (-math.log(10000.0) / embed_size))
-        self.positional_encoding[:, 0::2] = torch.sin(position * div_term)
-        self.positional_encoding[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('positional_encoding', self.positional_encoding)
+        positional_encoding[:, 0::2] = torch.sin(position * div_term)
+        positional_encoding[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('positional_encoding', positional_encoding)
 
         # This is where we can layer our transformer blocks
         self.layers = nn.ModuleList(
@@ -47,7 +47,7 @@ class Encoder(nn.Module):
     def forward(self, x, mask):
         N, seq_length = x.shape
         out = self.word_embedding(x)
-        out += self.positional_encoding[:, :seq_length, :]
+        out += self.positional_encoding[:seq_length, :]
         out = self.dropout(out)
         for layer in self.layers:
             out = layer(out, out, out, mask)

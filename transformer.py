@@ -55,7 +55,7 @@ class Transformer(nn.Module):
         N, trg_len = trg.shape
         # trg_mask shape: (N, 1, trg_len, trg_len)
         trg_pad_mask = (trg != self.trg_pad_idx).unsqueeze(1).unsqueeze(2)
-        trg_sub_mask = torch.tril(torch.ones((trg_len, trg_len))).to(self.device)
+        trg_sub_mask = torch.tril(torch.ones((trg_len, trg_len), dtype=torch.bool, device=self.device))
         trg_mask = trg_pad_mask & trg_sub_mask
         return trg_mask
 
