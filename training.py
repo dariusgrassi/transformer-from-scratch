@@ -15,7 +15,7 @@ from transformer import Transformer
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LEARNING_RATE = 5e-4
-BATCH_SIZE = 256
+BATCH_SIZE = 128
 NUM_EPOCHS = 10
 EMBED_SIZE = 512
 NUM_LAYERS = 6
