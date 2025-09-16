@@ -10,41 +10,26 @@ from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
 import os
 from tqdm import tqdm
-from google.colab import drive
-
-# This assumes 'transformer.py' exists in the same directory.
-try:
-    from transformer import Transformer
-except ImportError:
-    print("Warning: 'transformer.py' not found. Defining a placeholder Transformer class.")
-    class Transformer(nn.Module):
-        def __init__(self, **kwargs):
-            super(Transformer, self).__init__()
-            self.dummy_layer = nn.Linear(kwargs.get('embed_size', 512), kwargs.get('trg_vocab_size', 30000))
-            self.embed_size = kwargs.get('embed_size', 512)
-        def forward(self, src, trg):
-            batch_size, seq_length = src.shape
-            return torch.randn(batch_size, seq_length, self.dummy_layer.out_features).to(src.device)
+from transformer import Transformer
 
 # --- Hyperparameters and Constants ---
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LEARNING_RATE = 5e-4
-BATCH_SIZE = 128 # <--- EDIT THIS VALUE DIRECTLY IN COLAB FOR TESTING
-NUM_EPOCHS = 10
-EMBED_SIZE = 512
-NUM_LAYERS = 6
-HEADS = 8
-FORWARD_EXPANSION = 4
+BATCH_SIZE = 56
+NUM_EPOCHS = 3
+EMBED_SIZE = 128
+NUM_LAYERS = 2
+HEADS = 4
+FORWARD_EXPANSION = 2
 DROPOUT = 0.1
 MAX_LENGTH = 100
 
-# --- File Paths for Persistent Storage ---
-GDRIVE_MOUNT_PATH = '/content/drive'
-GDRIVE_PROJECT_PATH = os.path.join(GDRIVE_MOUNT_PATH, 'MyDrive', 'colab_transformer')
-TOKENIZER_PATH = os.path.join(GDRIVE_PROJECT_PATH, 'wikitext_tokenizer.json')
-TRAIN_DATA_PATH = os.path.join(GDRIVE_PROJECT_PATH, 'train_data.pt')
-VAL_DATA_PATH = os.path.join(GDRIVE_PROJECT_PATH, 'val_data.pt')
-
+# --- File Paths for Local Storage ---
+ARTIFACTS_PATH = 'artifacts'
+TOKENIZER_PATH = os.path.join(ARTIFACTS_PATH, 'wikitext_tokenizer.json')
+TRAIN_DATA_PATH = os.path.join(ARTIFACTS_PATH, 'train_data.pt')
+VAL_DATA_PATH = os.path.join(ARTIFACTS_PATH, 'val_data.pt')
+MODEL_SAVE_PATH = os.path.join(ARTIFACTS_PATH, 'transformer_wikitext103.pt')
 
 # --- Global variables ---
 SRC_PAD_IDX, TRG_PAD_IDX, SRC_VOCAB_SIZE, TRG_VOCAB_SIZE = None, None, None, None
@@ -56,11 +41,9 @@ def initialize_weights(m):
 def main():
     global SRC_PAD_IDX, TRG_PAD_IDX, SRC_VOCAB_SIZE, TRG_VOCAB_SIZE
 
-    # 1. Mount Google Drive and create project directory
-    print("Mounting Google Drive...")
-    drive.mount(GDRIVE_MOUNT_PATH, force_remount=True)
-    os.makedirs(GDRIVE_PROJECT_PATH, exist_ok=True)
-    print(f"Artifacts will be saved to: {GDRIVE_PROJECT_PATH}")
+    # 1. Create local artifacts directory
+    os.makedirs(ARTIFACTS_PATH, exist_ok=True)
+    print(f"Artifacts will be saved to/loaded from: {ARTIFACTS_PATH}")
 
     # 2. Load or Train Tokenizer
     if os.path.exists(TOKENIZER_PATH):
@@ -73,8 +56,8 @@ def main():
         tokenizer.pre_tokenizer = Whitespace()
         trainer = BpeTrainer(vocab_size=30000, min_frequency=2, special_tokens=["<unk>", "<pad>", "<sos>", "<eos>"])
         def text_iterator():
-            for item in wikitext_for_tokenizer['text']:
-                if item.strip(): yield item
+            for item in wikitext_for_tokenizer:
+                if item['text'].strip(): yield item['text']
         tokenizer.train_from_iterator(text_iterator(), trainer=trainer)
         tokenizer.save(TOKENIZER_PATH)
         print(f"Tokenizer trained and saved to {TOKENIZER_PATH}")
@@ -85,27 +68,26 @@ def main():
     TRG_VOCAB_SIZE = tokenizer.get_vocab_size()
     print(f"Vocabulary Size: {SRC_VOCAB_SIZE}, Padding Index: {SRC_PAD_IDX}")
 
-
     # 3. Load or Process Data
     if os.path.exists(TRAIN_DATA_PATH) and os.path.exists(VAL_DATA_PATH):
-        print(f"Loading processed data from {GDRIVE_PROJECT_PATH}...")
+        print(f"Loading processed data from {ARTIFACTS_PATH}...")
         train_data = torch.load(TRAIN_DATA_PATH).to(DEVICE)
         val_data = torch.load(VAL_DATA_PATH).to(DEVICE)
     else:
         print("Processing data from scratch...")
         wikitext = load_dataset('wikitext', 'wikitext-103-v1')
         def data_process(raw_text_iter, seq_len):
-            data = [torch.tensor(tokenizer.encode(item).ids, dtype=torch.long) for item in tqdm(raw_text_iter) if item.strip()]
+            data = [torch.tensor(tokenizer.encode(item['text']).ids, dtype=torch.long) for item in tqdm(raw_text_iter) if item['text'].strip()]
             data = torch.cat(tuple(filter(lambda t: t.numel() > 0, data)))
             num_sequences = data.size(0) // seq_len
             data = data.narrow(0, 0, num_sequences * seq_len)
             data = data.view(num_sequences, seq_len).contiguous()
             return data
 
-        train_data = data_process(wikitext['train']['text'], MAX_LENGTH)
-        val_data = data_process(wikitext['validation']['text'], MAX_LENGTH)
+        train_data = data_process(wikitext['train'], MAX_LENGTH)
+        val_data = data_process(wikitext['validation'], MAX_LENGTH)
 
-        print(f"Saving processed data to {GDRIVE_PROJECT_PATH}...")
+        print(f"Saving processed data to {ARTIFACTS_PATH}...")
         torch.save(train_data, TRAIN_DATA_PATH)
         torch.save(val_data, VAL_DATA_PATH)
         train_data = train_data.to(DEVICE)
@@ -130,7 +112,6 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     criterion = nn.CrossEntropyLoss(ignore_index=SRC_PAD_IDX)
 
-    # --- Training and Evaluation Functions ---
     def train_fn(model, data_source):
         model.train()
         total_loss = 0.
@@ -138,7 +119,7 @@ def main():
         for i in tqdm(range(0, data_source.size(0), BATCH_SIZE), desc="Training"):
             batch = data_source[i:i + BATCH_SIZE]
             src, trg = batch, batch
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             output = model(src, trg[:, :-1])
             output_reshaped = output.contiguous().view(-1, TRG_VOCAB_SIZE)
             trg_for_loss = trg[:, 1:].contiguous().view(-1)
@@ -182,9 +163,8 @@ def main():
         print("-" * 89)
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            model_save_path = os.path.join(GDRIVE_PROJECT_PATH, 'transformer_wikitext103.pt')
-            torch.save(model.state_dict(), model_save_path)
-            print(f"Saved best model state to {model_save_path}")
+            torch.save(model.state_dict(), MODEL_SAVE_PATH)
+            print(f"Saved best model state to {MODEL_SAVE_PATH}")
 
 if __name__ == "__main__":
     main()
