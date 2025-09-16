@@ -15,7 +15,7 @@ from transformer import Transformer
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 LEARNING_RATE = 5e-4
-BATCH_SIZE = 16  # Note: This is not directly used in the batching logic, which is sequence-length based.
+BATCH_SIZE = 256
 NUM_EPOCHS = 10
 EMBED_SIZE = 512
 NUM_LAYERS = 6
@@ -124,24 +124,21 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     criterion = nn.CrossEntropyLoss(ignore_index=SRC_PAD_IDX)
 
-    # --- Training and Evaluation Functions ---
     def train_fn(model, data_source):
         model.train()
         total_loss = 0.
-        # Iterate over the data source which is already shaped [num_batches, seq_len]
-        for i in tqdm(range(data_source.size(0)), desc="Training"):
-            src = data_source[i, :].unsqueeze(0) # Get a single sequence, add batch dim
-            trg = data_source[i, :].unsqueeze(0)
+        num_batches = 0
+        # Iterate over the data source in steps of BATCH_SIZE
+        for i in tqdm(range(0, data_source.size(0), BATCH_SIZE), desc="Training"):
+            batch = data_source[i:i + BATCH_SIZE]
+            src = batch
+            trg = batch # For language modeling, src and trg are the same
 
-            # In language modeling, the input to the decoder is the same as the encoder
-            # The model's internal masking handles predicting the next token.
-            # The actual target for the loss is handled by shifting inside the loss calculation.
             optimizer.zero_grad()
-            output = model(src, trg[:, :-1]) # Target input is shifted right
+            output = model(src, trg[:, :-1])
 
-            # Reshape for loss calculation
             output_reshaped = output.contiguous().view(-1, TRG_VOCAB_SIZE)
-            trg_for_loss = trg[:, 1:].contiguous().view(-1) # Ground truth is shifted left
+            trg_for_loss = trg[:, 1:].contiguous().view(-1)
 
             loss = criterion(output_reshaped, trg_for_loss)
             loss.backward()
@@ -149,24 +146,28 @@ def main():
             optimizer.step()
 
             total_loss += loss.item()
+            num_batches += 1
 
-        return total_loss / data_source.size(0)
+        return total_loss / num_batches
 
     def evaluate_fn(model, data_source):
         model.eval()
         total_loss = 0.
+        num_batches = 0
         with torch.no_grad():
-            for i in tqdm(range(data_source.size(0)), desc="Evaluating"):
-                src = data_source[i, :].unsqueeze(0)
-                trg = data_source[i, :].unsqueeze(0)
+            for i in tqdm(range(0, data_source.size(0), BATCH_SIZE), desc="Evaluating"):
+                batch = data_source[i:i + BATCH_SIZE]
+                src = batch
+                trg = batch
 
                 output = model(src, trg[:, :-1])
                 output_reshaped = output.contiguous().view(-1, TRG_VOCAB_SIZE)
                 trg_for_loss = trg[:, 1:].contiguous().view(-1)
                 loss = criterion(output_reshaped, trg_for_loss)
                 total_loss += loss.item()
+                num_batches += 1
 
-        return total_loss / data_source.size(0)
+        return total_loss / num_batches
 
     # 6. Main Training Loop
     best_val_loss = float('inf')
