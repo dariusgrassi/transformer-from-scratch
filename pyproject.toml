@@ -10,7 +10,6 @@ dependencies = [
     "torchvision>=0.23.0",
     "pandas",
     "matplotlib",
-    "xformers",
     "datasets",
     "tokenizers",
     "tqdm",
