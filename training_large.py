@@ -17,10 +17,10 @@ DEVICE = "cuda:1" if torch.cuda.is_available() else "cpu"
 LEARNING_RATE = 5e-4
 BATCH_SIZE = 8
 NUM_EPOCHS = 3
-EMBED_SIZE = 128
-NUM_LAYERS = 2
-HEADS = 4
-FORWARD_EXPANSION = 2
+EMBED_SIZE = 256
+NUM_LAYERS = 4
+HEADS = 8
+FORWARD_EXPANSION = 4
 DROPOUT = 0.1
 MAX_LENGTH = 512
 
@@ -29,7 +29,7 @@ ARTIFACTS_PATH = 'artifacts'
 TOKENIZER_PATH = os.path.join(ARTIFACTS_PATH, 'wikitext_tokenizer.json')
 TRAIN_DATA_PATH = os.path.join(ARTIFACTS_PATH, 'train_data.pt')
 VAL_DATA_PATH = os.path.join(ARTIFACTS_PATH, 'val_data.pt')
-MODEL_SAVE_PATH = os.path.join(ARTIFACTS_PATH, 'transformer_wikitext103.pt')
+MODEL_SAVE_PATH = os.path.join(ARTIFACTS_PATH, 'transformer_large.pt')
 
 # --- Global variables ---
 SRC_PAD_IDX, TRG_PAD_IDX, SRC_VOCAB_SIZE, TRG_VOCAB_SIZE = None, None, None, None

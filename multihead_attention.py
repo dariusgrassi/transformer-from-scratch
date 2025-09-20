@@ -24,48 +24,29 @@ class SelfAttention(nn.Module):
         self.fc_out = nn.Linear(heads * self.head_dim, embed_size)
 
     def forward(self, values, keys, query, mask):
-        # The forward pass is where we calculate the attention scores
-        # First we get the batch size
         N = query.shape[0]
- 
-        # Then the sequence lengths
         value_len, key_len, query_len = values.shape[1], keys.shape[1], query.shape[1]
 
-        # Finally, pass inputs through our linear layers
-        values = self.values(values)
-        keys = self.keys(keys)
-        queries = self.queries(query)
+        # Reshape for multi-head attention
+        values = self.values(values).reshape(N, value_len, self.heads, self.head_dim)
+        keys = self.keys(keys).reshape(N, key_len, self.heads, self.head_dim)
+        queries = self.queries(query).reshape(N, query_len, self.heads, self.head_dim)
 
-        # To enable multi-head attention, we split our embedding into
-        # self.heads pieces
-        values = values.reshape(N, value_len, self.heads, self.head_dim)
-        keys = keys.reshape(N, key_len, self.heads, self.head_dim)
-        queries = queries.reshape(N, query_len, self.heads, self.head_dim)
-
-        # To get the raw attention score, we multiply Q with the
-        # transpose of K ("energy") using einsum notation
-        # energy shape: (N, heads, query_len, key_len)
+        # --- Standard PyTorch Attention Logic ---
         energy = torch.einsum("nqhd,nkhd->nhqk", [queries, keys])
+        scaled_energy = energy / (self.embed_size ** (1/2))
 
-        # Now we divide it by sqrt(d_k), since this is multi-head
-        scaled_energy = energy / (self.head_dim ** (1/2))
-
-        # We'll also add a mask to support masked attention, if we want
-        # it
+        # The mask is now a float tensor (0.0 or -inf), so we add it directly
         if mask is not None:
-            # Set masked positions to small values
-            scaled_energy = scaled_energy.masked_fill(mask == 0,
-                                                      float("-1e20"))
-        
-        # Now we can finally apply softmax to get attention weights that
-        # look like probabilities (positive and sum to 1)
+            scaled_energy += mask # <<< This is the correct logic
+
         attention = torch.softmax(scaled_energy, dim=-1)
 
-        # Finally, multiply by V to get a weighted sum
-        # Then we'll combine our heads back together and pass them
-        # through the output layer
-        out = torch.einsum("nhql,nlhd->nqhd", [attention, values])
-        out = out.reshape(N, query_len, self.heads * self.head_dim)
+        out = torch.einsum("nhql,nlhd->nqhd", [attention, values]).reshape(
+            N, query_len, self.heads * self.head_dim
+        )
+        # --- End of Standard Logic ---
+
         out = self.fc_out(out)
         return out
 
