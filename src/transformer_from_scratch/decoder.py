@@ -1,7 +1,7 @@
 import math
 import torch
 import torch.nn as nn
-from multihead_attention import SelfAttention
+from .multihead_attention import SelfAttention
 
 class Decoder(nn.Module):
     def __init__(

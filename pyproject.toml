@@ -1,11 +1,21 @@
 [project]
-name = "395t-assignment-1-transformer"
+name = "transformer_from_scratch"
 version = "0.1.0"
-description = "Add your description here"
+description = "A Transformer model from scratch."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "torch>=2.8.0",
     "torchaudio>=2.8.0",
     "torchvision>=0.23.0",
+    "pandas",
+    "matplotlib",
+    "xformers",
+    "datasets",
+    "tokenizers",
+    "tqdm",
 ]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["transformer_from_scratch"]

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from multihead_attention import SelfAttention
+from .multihead_attention import SelfAttention
 
 # With the attention block defined, we can now build the Transformer
 # block
